@@ -15,7 +15,6 @@
  */
 package io.netty.util.concurrent;
 
-import io.netty.util.internal.ThreadExecutorMap;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -60,7 +59,6 @@ public final class UnorderedThreadPoolEventExecutor extends ScheduledThreadPoolE
      */
     public UnorderedThreadPoolEventExecutor(int corePoolSize, ThreadFactory threadFactory) {
         super(corePoolSize, threadFactory);
-        this.setThreadFactory(ThreadExecutorMap.apply(getThreadFactory(), this));
     }
 
     /**
@@ -77,7 +75,6 @@ public final class UnorderedThreadPoolEventExecutor extends ScheduledThreadPoolE
     public UnorderedThreadPoolEventExecutor(int corePoolSize, ThreadFactory threadFactory,
                                             RejectedExecutionHandler handler) {
         super(corePoolSize, threadFactory, handler);
-        this.setThreadFactory(ThreadExecutorMap.apply(getThreadFactory(), this));
     }
 
     @Override
