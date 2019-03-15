@@ -19,11 +19,13 @@ package io.netty.buffer;
 import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 import io.netty.util.NettyRuntime;
+import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.FastThreadLocal;
 import io.netty.util.concurrent.FastThreadLocalThread;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.StringUtil;
 import io.netty.util.internal.SystemPropertyUtil;
+import io.netty.util.internal.ThreadExecutorMap;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -31,6 +33,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class PooledByteBufAllocator extends AbstractByteBufAllocator implements ByteBufAllocatorMetricProvider {
 
@@ -45,6 +48,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
     private static final int DEFAULT_NORMAL_CACHE_SIZE;
     private static final int DEFAULT_MAX_CACHED_BUFFER_CAPACITY;
     private static final int DEFAULT_CACHE_TRIM_INTERVAL;
+    private static final long DEFAULT_CACHE_TRIM_RATE;
     private static final boolean DEFAULT_USE_CACHE_FOR_ALL_THREADS;
     private static final int DEFAULT_DIRECT_MEMORY_CACHE_ALIGNMENT;
     static final int DEFAULT_MAX_CACHED_BYTEBUFFERS_PER_CHUNK;
@@ -113,6 +117,9 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
         DEFAULT_CACHE_TRIM_INTERVAL = SystemPropertyUtil.getInt(
                 "io.netty.allocator.cacheTrimInterval", 8192);
 
+        DEFAULT_CACHE_TRIM_RATE = SystemPropertyUtil.getLong(
+                "io.netty.allocator.cacheTrimRateMs", 0);
+
         DEFAULT_USE_CACHE_FOR_ALL_THREADS = SystemPropertyUtil.getBoolean(
                 "io.netty.allocator.useCacheForAllThreads", true);
 
@@ -143,6 +150,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
             logger.debug("-Dio.netty.allocator.normalCacheSize: {}", DEFAULT_NORMAL_CACHE_SIZE);
             logger.debug("-Dio.netty.allocator.maxCachedBufferCapacity: {}", DEFAULT_MAX_CACHED_BUFFER_CAPACITY);
             logger.debug("-Dio.netty.allocator.cacheTrimInterval: {}", DEFAULT_CACHE_TRIM_INTERVAL);
+            logger.debug("-Dio.netty.allocator.cacheTrimRateInMs: {}", DEFAULT_CACHE_TRIM_RATE);
             logger.debug("-Dio.netty.allocator.useCacheForAllThreads: {}", DEFAULT_USE_CACHE_FOR_ALL_THREADS);
             logger.debug("-Dio.netty.allocator.maxCachedByteBuffersPerChunk: {}",
                     DEFAULT_MAX_CACHED_BYTEBUFFERS_PER_CHUNK);
@@ -440,9 +448,22 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
 
             Thread current = Thread.currentThread();
             if (useCacheForAllThreads || current instanceof FastThreadLocalThread) {
-                return new PoolThreadCache(
+                final PoolThreadCache cache = new PoolThreadCache(
                         heapArena, directArena, tinyCacheSize, smallCacheSize, normalCacheSize,
                         DEFAULT_MAX_CACHED_BUFFER_CAPACITY, DEFAULT_CACHE_TRIM_INTERVAL);
+
+                if (DEFAULT_CACHE_TRIM_RATE > 0) {
+                    EventExecutor executor = ThreadExecutorMap.currentExecutor();
+                    if (executor != null) {
+                        executor.scheduleAtFixedRate(new Runnable() {
+                            @Override
+                            public void run() {
+                                cache.trim();
+                            }
+                        }, DEFAULT_CACHE_TRIM_RATE, DEFAULT_CACHE_TRIM_RATE, TimeUnit.MILLISECONDS);
+                    }
+                }
+                return cache;
             }
             // No caching so just use 0 as sizes.
             return new PoolThreadCache(heapArena, directArena, 0, 0, 0, 0, 0);
@@ -601,6 +622,16 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
         PoolThreadCache cache =  threadCache.get();
         assert cache != null;
         return cache;
+    }
+
+    /**
+     * Trim thread local cache for the current {@link Thread}, which will give back any cached memory that was not
+     * allocated frequently since the last trim operation.
+     */
+    public void trimCurrentThreadCache() {
+        if (threadCache.isSet()) {
+            threadCache.get().trim();
+        }
     }
 
     /**
