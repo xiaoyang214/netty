@@ -22,6 +22,7 @@ import io.netty.util.NettyRuntime;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.FastThreadLocal;
 import io.netty.util.concurrent.FastThreadLocalThread;
+import io.netty.util.concurrent.OrderedEventExecutor;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.StringUtil;
 import io.netty.util.internal.SystemPropertyUtil;
@@ -454,7 +455,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
 
                 if (DEFAULT_CACHE_TRIM_RATE > 0) {
                     EventExecutor executor = ThreadExecutorMap.currentExecutor();
-                    if (executor != null) {
+                    if (executor instanceof OrderedEventExecutor) {
                         executor.scheduleAtFixedRate(new Runnable() {
                             @Override
                             public void run() {
