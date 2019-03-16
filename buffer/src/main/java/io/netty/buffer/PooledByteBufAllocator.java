@@ -22,7 +22,7 @@ import io.netty.util.NettyRuntime;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.FastThreadLocal;
 import io.netty.util.concurrent.FastThreadLocalThread;
-import io.netty.util.concurrent.OrderedEventExecutor;
+import io.netty.util.concurrent.SingleThreadEventExecutor;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.StringUtil;
 import io.netty.util.internal.SystemPropertyUtil;
@@ -447,18 +447,21 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
             final PoolArena<byte[]> heapArena = leastUsedArena(heapArenas);
             final PoolArena<ByteBuffer> directArena = leastUsedArena(directArenas);
 
-            Thread current = Thread.currentThread();
+            final Thread current = Thread.currentThread();
             if (useCacheForAllThreads || current instanceof FastThreadLocalThread) {
                 final PoolThreadCache cache = new PoolThreadCache(
                         heapArena, directArena, tinyCacheSize, smallCacheSize, normalCacheSize,
                         DEFAULT_MAX_CACHED_BUFFER_CAPACITY, DEFAULT_CACHE_TRIM_INTERVAL);
 
                 if (DEFAULT_CACHE_TRIM_RATE > 0) {
-                    EventExecutor executor = ThreadExecutorMap.currentExecutor();
-                    if (executor instanceof OrderedEventExecutor) {
+                    final EventExecutor executor = ThreadExecutorMap.currentExecutor();
+                    // We can only automatically trim on a timely basis if the Thread that is used to process
+                    // the scheduling task is the same as the one that is used to access the PoolThreadCache.
+                    if (executor instanceof SingleThreadEventExecutor) {
                         executor.scheduleAtFixedRate(new Runnable() {
                             @Override
                             public void run() {
+                                assert current == Thread.currentThread();
                                 cache.trim();
                             }
                         }, DEFAULT_CACHE_TRIM_RATE, DEFAULT_CACHE_TRIM_RATE, TimeUnit.MILLISECONDS);
