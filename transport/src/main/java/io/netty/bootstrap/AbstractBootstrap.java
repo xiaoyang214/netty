@@ -49,12 +49,21 @@ import java.util.Map;
  */
 public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C extends Channel> implements Cloneable {
 
+    /**
+     * EventLoop组
+     */
     volatile EventLoopGroup group;
     @SuppressWarnings("deprecation")
     private volatile ChannelFactory<? extends C> channelFactory;
     private volatile SocketAddress localAddress;
+    /**
+     * 可能存在并发的问题，下面 synchronized 方式做了同步处理
+     */
     private final Map<ChannelOption<?>, Object> options = new LinkedHashMap<ChannelOption<?>, Object>();
     private final Map<AttributeKey<?>, Object> attrs = new LinkedHashMap<AttributeKey<?>, Object>();
+    /**
+     * channel处理器
+     */
     private volatile ChannelHandler handler;
 
     AbstractBootstrap() {
@@ -103,6 +112,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         if (channelClass == null) {
             throw new NullPointerException("channelClass");
         }
+        // 反射创建channel
         return channelFactory(new ReflectiveChannelFactory<C>(channelClass));
     }
 
@@ -166,6 +176,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     /**
      * Allow to specify a {@link ChannelOption} which is used for the {@link Channel} instances once they got
      * created. Use a value of {@code null} to remove a previous set {@link ChannelOption}.
+     * 设置 channel 的可选项，null为移除
      */
     public <T> B option(ChannelOption<T> option, T value) {
         if (option == null) {
@@ -206,6 +217,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     /**
      * Validate all the parameters. Sub-classes may override this, but should
      * call the super method in that case.
+     * 参数校验，子类可以覆盖，但需要调用父类的方法
      */
     public B validate() {
         if (group == null) {
@@ -228,6 +240,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
     /**
      * Create a new {@link Channel} and register it with an {@link EventLoop}.
+     * 将channel注册到EventLoop上
      */
     public ChannelFuture register() {
         validate();
@@ -279,12 +292,13 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        // 注册并初始化一个channel(通过ChannelFactory创建对象)，并返回一个ChannelFuture对象
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
             return regFuture;
         }
-
+        // 已经注册成功，将channel注册到selectKey中
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
@@ -315,9 +329,11 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     final ChannelFuture initAndRegister() {
+        // channel factory 创建 channel
         Channel channel = null;
         try {
             channel = channelFactory.newChannel();
+            // 初始化，bootstrap, serverBootStrap 各自实现
             init(channel);
         } catch (Throwable t) {
             if (channel != null) {
@@ -329,7 +345,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
-
+        // boss eventLoop
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
@@ -395,7 +411,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     /**
      * Returns the {@link AbstractBootstrapConfig} object that can be used to obtain the current config
      * of the bootstrap.
+     * 返回当前bootstrap的config
      */
+    // xiaoyang 2019/3/27: BootstrapConfig
     public abstract AbstractBootstrapConfig<B, C> config();
 
     static <K, V> Map<K, V> copiedMap(Map<K, V> map) {

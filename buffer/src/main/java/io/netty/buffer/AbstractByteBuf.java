@@ -242,7 +242,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
             writerIndex = readerIndex = 0;
             return this;
         }
-
+        // 读索引已经大于容量一半，进行释放
         if (readerIndex >= capacity() >>> 1) {
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
             writerIndex -= readerIndex;
@@ -268,6 +268,12 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
     }
 
+    /**
+     * 确定是否可写，如果不够，进行扩容
+     * @param minWritableBytes
+     *        the expected minimum number of writable bytes
+     * @return
+     */
     @Override
     public ByteBuf ensureWritable(int minWritableBytes) {
         checkPositiveOrZero(minWritableBytes, "minWritableBytes");
@@ -280,6 +286,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         if (minWritableBytes <= writableBytes()) {
             return;
         }
+        // 检查越界，超过最大容量，抛出异常
         if (checkBounds) {
             if (minWritableBytes > maxCapacity - writerIndex) {
                 throw new IndexOutOfBoundsException(String.format(
@@ -289,9 +296,10 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
 
         // Normalize the current capacity to the power of 2.
+        // 扩容 4M 是一个临界值，4m之前的，64开始 << 1, 之后的在阈值基础上进行处理, 仅做计算，并未实际扩容，返回应该创建的容量
         int newCapacity = alloc().calculateNewCapacity(writerIndex + minWritableBytes, maxCapacity);
 
-        // Adjust to the new capacity.
+        // Adjust to the new capacity. 不同的子类实现的扩容方案不一样
         capacity(newCapacity);
     }
 
@@ -344,6 +352,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
     @Override
     public byte getByte(int index) {
         checkIndex(index);
+        // 子类各自实现
         return _getByte(index);
     }
 
@@ -1437,6 +1446,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
      * if the buffer was released before.
      */
     protected final void ensureAccessible() {
+        // 判断引用次数是否 != 0, 如果 == 0, 已经释放
         if (checkAccessible && !isAccessible()) {
             throw new IllegalReferenceCountException(0);
         }

@@ -165,10 +165,11 @@ public class DefaultChannelConfig implements ChannelConfig {
     @SuppressWarnings("deprecation")
     public <T> boolean setOption(ChannelOption<T> option, T value) {
         validate(option, value);
-
         if (option == CONNECT_TIMEOUT_MILLIS) {
+            // 设置链接超时时间
             setConnectTimeoutMillis((Integer) value);
         } else if (option == MAX_MESSAGES_PER_READ) {
+            // 最大预读量
             setMaxMessagesPerRead((Integer) value);
         } else if (option == WRITE_SPIN_COUNT) {
             setWriteSpinCount((Integer) value);

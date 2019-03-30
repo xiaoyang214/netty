@@ -460,26 +460,32 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             return remoteAddress0();
         }
 
+        /**
+         * 实际触发register
+         */
         @Override
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
             if (eventLoop == null) {
                 throw new NullPointerException("eventLoop");
             }
+            // 判断已经注册
             if (isRegistered()) {
                 promise.setFailure(new IllegalStateException("registered to an event loop already"));
                 return;
             }
+            // channel 和 EventLoop 是否兼容，是否是对应的类型, e.g. 如果当前是 NioEventLoop 类型，判断是否一致
             if (!isCompatible(eventLoop)) {
                 promise.setFailure(
                         new IllegalStateException("incompatible event loop type: " + eventLoop.getClass().getName()));
                 return;
             }
-
+            // 保存变量，设置到channel中
             AbstractChannel.this.eventLoop = eventLoop;
-
+            // 如果是EventLoop线程，执行注册
             if (eventLoop.inEventLoop()) {
                 register0(promise);
             } else {
+                //如果非当前EventLoop线程，放到队列中去执行
                 try {
                     eventLoop.execute(new Runnable() {
                         @Override
@@ -502,10 +508,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             try {
                 // check if the channel is still open as it could be closed in the mean time when the register
                 // call was outside of the eventLoop
+                // 不可取消设置失败 || 确认还没有打开，直接返回
                 if (!promise.setUncancellable() || !ensureOpen(promise)) {
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
+                // 将 channel 注册到 Selector 上面，用的 jdk nio 的操作
                 doRegister();
                 neverRegistered = false;
                 registered = true;
@@ -513,7 +521,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
                 pipeline.invokeHandlerAddedIfNeeded();
-
+                // 仅记录日志操作(如果已经成功)
                 safeSetSuccess(promise);
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
@@ -557,16 +565,17 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         "is not bound to a wildcard address; binding to a non-wildcard " +
                         "address (" + localAddress + ") anyway as requested.");
             }
-
+            // channel是否已经激活
             boolean wasActive = isActive();
             try {
+                // 调用jdk的方法进行绑定
                 doBind(localAddress);
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
                 closeIfClosed();
                 return;
             }
-
+            // 已经激活，发送channel active事件, 添加到任务队列中
             if (!wasActive && isActive()) {
                 invokeLater(new Runnable() {
                     @Override
