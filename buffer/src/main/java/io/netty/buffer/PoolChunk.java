@@ -35,6 +35,7 @@ import java.util.Deque;
  * marked as reserved so it is always used by exactly one ByteBuf and no more)
  *
  * For simplicity all sizes are normalized according to PoolArena#normalizeCapacity method
+ * 当我们请求大小为 size >= pageSize 的内存段是，normalizedCapacity等于下一个最近的二次幂
  * This ensures that when we request for memory segments of size >= pageSize the normalizedCapacity
  * equals the next nearest power of 2
  *
@@ -54,12 +55,14 @@ import java.util.Deque;
  * depth=maxOrder is the last level and the leafs consist of pages
  *
  * With this tree available searching in chunkArray translates like this:
+ * 分配一个 chunkSize/2^k 大小的内存段，我们从高度为 K 的位置，开始查找左侧的第一个未使用的节点
  * To allocate a memory segment of size chunkSize/2^k we search for the first node (from left) at height k
  * which is unused
  *
  * Algorithm:
  * ----------
  * Encode the tree in memoryMap with the notation
+ *   在以id为根的子树中，可以被自由分配的第一个节点位于树深度为x的位置，id从1开始分配
  *   memoryMap[id] = x => in the subtree rooted at id, the first node that is free to be allocated
  *   is at depth x (counted from depth=0) i.e., at depths [depth_of_id, x), there is no node that is free
  *
@@ -142,27 +145,27 @@ final class PoolChunk<T> implements PoolChunkMetric {
     //private long pad0, pad1, pad2, pad3, pad4, pad5, pad6, pad7;
 
     PoolChunk(PoolArena<T> arena, T memory, int pageSize, int maxOrder, int pageShifts, int chunkSize, int offset) {
-        unpooled = false;
+        unpooled = false; // false
         this.arena = arena;
         this.memory = memory;
-        this.pageSize = pageSize;
-        this.pageShifts = pageShifts;
-        this.maxOrder = maxOrder;
-        this.chunkSize = chunkSize;
-        this.offset = offset;
-        unusable = (byte) (maxOrder + 1);
-        log2ChunkSize = log2(chunkSize);
-        subpageOverflowMask = ~(pageSize - 1);
+        this.pageSize = pageSize; // 8192
+        this.pageShifts = pageShifts; // 13
+        this.maxOrder = maxOrder; // 11
+        this.chunkSize = chunkSize; // 16777216
+        this.offset = offset; // 64
+        unusable = (byte) (maxOrder + 1); // 12
+        log2ChunkSize = log2(chunkSize); // 24
+        subpageOverflowMask = -pageSize; // -8129
         freeBytes = chunkSize;
 
         assert maxOrder < 30 : "maxOrder should be < 30, but is: " + maxOrder;
-        maxSubpageAllocs = 1 << maxOrder;
+        maxSubpageAllocs = 1 << maxOrder; // 2048
 
-        // Generate the memory map.
+        // Generate the memory map. 存放了每一个元素在平衡二叉树中对应的深度
         memoryMap = new byte[maxSubpageAllocs << 1];
-        depthMap = new byte[memoryMap.length];
+        depthMap = new byte[memoryMap.length]; // 4096个对象
         int memoryMapIndex = 1;
-        for (int d = 0; d <= maxOrder; ++ d) { // move down the tree one level at a time
+        for (int d = 0; d <= maxOrder; ++ d) { // move down the tree one level at a time 12层
             int depth = 1 << d;
             for (int p = 0; p < depth; ++ p) {
                 // in each level traverse left to right and set value to the depth of subtree

@@ -29,6 +29,9 @@ import java.nio.channels.ScatteringByteChannel;
 
 final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
 
+    /**
+     * 通过 Recycle 来做一个对象池，初始化创建一个最大容量为 0 的 PooledDirectByteBuf
+     */
     private static final Recycler<PooledDirectByteBuf> RECYCLER = new Recycler<PooledDirectByteBuf>() {
         @Override
         protected PooledDirectByteBuf newObject(Handle<PooledDirectByteBuf> handle) {
@@ -37,7 +40,9 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
     };
 
     static PooledDirectByteBuf newInstance(int maxCapacity) {
+        // 从 Recycler 的对象池中获得 PooledDirectByteBuf 对象
         PooledDirectByteBuf buf = RECYCLER.get();
+        // 重置对象
         buf.reuse(maxCapacity);
         return buf;
     }
@@ -48,6 +53,7 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
 
     @Override
     protected ByteBuffer newInternalNioBuffer(ByteBuffer memory) {
+        // 调用 java.nio.DirectByteBuffer.duplicate 方法，复制一个对象，保留原来的内容
         return memory.duplicate();
     }
 
@@ -405,6 +411,9 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
     public ByteBuffer nioBuffer(int index, int length) {
         checkIndex(index, length);
         index = idx(index);
+        // duplicate 复制一个 ByteBuffer 对象，共享数据
+        // position + limit 设置位置和大小限制
+        // slice 创建 [position, limit] 子缓冲区，共享数据
         return ((ByteBuffer) memory.duplicate().position(index).limit(index + length)).slice();
     }
 
@@ -420,6 +429,8 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
         return (ByteBuffer) internalNioBuffer().clear().position(index).limit(index + length);
     }
 
+    // 不支持 Heap 相关的方法
+
     @Override
     public boolean hasArray() {
         return false;
@@ -434,6 +445,8 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
     public int arrayOffset() {
         throw new UnsupportedOperationException("direct buffer");
     }
+
+    // 不支持 Unsafe 相关的方法
 
     @Override
     public boolean hasMemoryAddress() {
