@@ -18,11 +18,13 @@ package io.netty.buffer;
 public interface ByteBufAllocatorMetric {
     /**
      * Returns the number of bytes of heap memory used by a {@link ByteBufAllocator} or {@code -1} if unknown.
+     * 已经使用的 heap 的内存
      */
     long usedHeapMemory();
 
     /**
      * Returns the number of bytes of direct memory used by a {@link ByteBufAllocator} or {@code -1} if unknown.
+     * 已经使用的 direct 内存
      */
     long usedDirectMemory();
 }

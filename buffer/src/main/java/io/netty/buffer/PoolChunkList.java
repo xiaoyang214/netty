@@ -29,11 +29,23 @@ import java.nio.ByteBuffer;
 
 final class PoolChunkList<T> implements PoolChunkListMetric {
     private static final Iterator<PoolChunkMetric> EMPTY_METRICS = Collections.<PoolChunkMetric>emptyList().iterator();
+    /**
+     * 所属的竞技场
+     */
     private final PoolArena<T> arena;
+    /**
+     * 链表，下一个元素
+     */
     private final PoolChunkList<T> nextList;
     private final int minUsage;
     private final int maxUsage;
+    /**
+     * 最大容量
+     */
     private final int maxCapacity;
+    /**
+     * 当前list中的头结点
+     */
     private PoolChunk<T> head;
 
     // This is only update once when create the linked like list of PoolChunkList in PoolArena constructor.
@@ -57,7 +69,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
      */
     private static int calculateMaxCapacity(int minUsage, int chunkSize) {
         minUsage = minUsage0(minUsage);
-
+        // 百分数表示
         if (minUsage == 100) {
             // If the minUsage is 100 we can not allocate anything out of this list.
             return 0;
@@ -71,18 +83,24 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
         return  (int) (chunkSize * (100L - minUsage) / 100L);
     }
 
+    /**
+     * 设置前一个当前PoolChunkList的前驱节点
+     *
+     * @param prevList
+     */
     void prevList(PoolChunkList<T> prevList) {
         assert this.prevList == null;
         this.prevList = prevList;
     }
 
     boolean allocate(PooledByteBuf<T> buf, int reqCapacity, int normCapacity) {
+        // 防御，不可以分配了
         if (normCapacity > maxCapacity) {
             // Either this PoolChunkList is empty or the requested capacity is larger then the capacity which can
             // be handled by the PoolChunks that are contained in this PoolChunkList.
             return false;
         }
-
+        // 从第一个 PoolChunk 开始遍历，尝试分配
         for (PoolChunk<T> cur = head; cur != null; cur = cur.next) {
             if (cur.allocate(buf, reqCapacity, normCapacity)) {
                 if (cur.usage() >= maxUsage) {

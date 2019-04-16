@@ -36,9 +36,17 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
  * {@link Unpooled#wrappedBuffer(byte[])} instead of calling the constructor explicitly.
  */
 public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
-
+    /**
+     * 分配器
+     */
     private final ByteBufAllocator alloc;
+    /**
+     * byte 数组，存放数据
+     */
     byte[] array;
+    /**
+     * ByteBuffer 对象
+     */
     private ByteBuffer tmpNioBuf;
 
     /**
@@ -58,7 +66,9 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         }
 
         this.alloc = alloc;
+        // 创建一个新的 byte 数据，设置到 array 中
         setArray(allocateArray(initialCapacity));
+        // 设置读写index
         setIndex(0, 0);
     }
 
@@ -123,10 +133,15 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
 
         int oldCapacity = array.length;
         byte[] oldArray = array;
+        // 扩容
         if (newCapacity > oldCapacity) {
+            // 创建一个新的 byte 数组
             byte[] newArray = allocateArray(newCapacity);
+            // 将旧的数据复制到新的数组中
             System.arraycopy(oldArray, 0, newArray, 0, oldArray.length);
+            // 设置新的数组
             setArray(newArray);
+            // 释放老的数组
             freeArray(oldArray);
         } else if (newCapacity < oldCapacity) {
             byte[] newArray = allocateArray(newCapacity);

@@ -40,6 +40,24 @@ import static org.junit.Assert.assertTrue;
 
 public class PooledByteBufAllocatorTest extends AbstractByteBufAllocatorTest<PooledByteBufAllocator> {
 
+    @Test
+    public void testUsedDirectMemory() {
+        PooledByteBufAllocator allocator =  newAllocator(true);
+        ByteBufAllocatorMetric metric = ((ByteBufAllocatorMetricProvider) allocator).metric();
+        assertEquals(0, metric.usedDirectMemory());
+        ByteBuf buffer = allocator.directBuffer(8192, 16384);
+        int capacity = buffer.capacity();
+        assertEquals(expectedUsedMemory(allocator, capacity), metric.usedDirectMemory());
+
+        // Double the size of the buffer
+        buffer.capacity(capacity << 1);
+        capacity = buffer.capacity();
+        assertEquals(buffer.toString(), expectedUsedMemory(allocator, capacity), metric.usedDirectMemory());
+
+        buffer.release();
+        assertEquals(expectedUsedMemoryAfterRelease(allocator, capacity), metric.usedDirectMemory());
+    }
+
     @Override
     protected PooledByteBufAllocator newAllocator(boolean preferDirect) {
         return new PooledByteBufAllocator(preferDirect);

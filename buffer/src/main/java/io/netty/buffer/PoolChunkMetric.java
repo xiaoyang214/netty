@@ -22,16 +22,19 @@ public interface PoolChunkMetric {
 
     /**
      * Return the percentage of the current usage of the chunk.
+     * 返回当前 Chunk 未使用的百分比
      */
     int usage();
 
     /**
      * Return the size of the chunk in bytes, this is the maximum of bytes that can be served out of the chunk.
+     * 返回 Chunk 的字节大小，也是这个 Chunk 提供的最大字节数
      */
     int chunkSize();
 
     /**
      * Return the number of free bytes in the chunk.
+     * 返回 Chunk 可用的剩余字节数
      */
     int freeBytes();
 }

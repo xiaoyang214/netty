@@ -27,6 +27,9 @@ import io.netty.util.internal.StringUtil;
  * Skeletal {@link ByteBufAllocator} implementation to extend.
  */
 public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
+    /**
+     * 默认的 ByteBuf 的初始容量，最大容量，最大的组合缓冲的个数，计算的阈值
+     */
     static final int DEFAULT_INITIAL_CAPACITY = 256;
     static final int DEFAULT_MAX_CAPACITY = Integer.MAX_VALUE;
     static final int DEFAULT_MAX_COMPONENTS = 16;
@@ -36,6 +39,9 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
         ResourceLeakDetector.addExclusions(AbstractByteBufAllocator.class, "toLeakAwareBuffer");
     }
 
+    /**
+     * 内存泄露检测
+     */
     protected static ByteBuf toLeakAwareBuffer(ByteBuf buf) {
         ResourceLeakTracker<ByteBuf> leak;
         switch (ResourceLeakDetector.getLevel()) {
@@ -80,11 +86,15 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
         return buf;
     }
 
+    /**
+     * 是否是直接内存(堆外), emptyBuf
+     */
     private final boolean directByDefault;
     private final ByteBuf emptyBuf;
 
     /**
      * Instance use heap buffers by default
+     * 默认创建的是 Heap Buffer
      */
     protected AbstractByteBufAllocator() {
         this(false);
@@ -92,7 +102,7 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
 
     /**
      * Create new instance
-     *
+     * 如果倾向于直接内存，设置 preferDirect = true
      * @param preferDirect {@code true} if {@link #buffer(int)} should try to allocate a direct buffer rather than
      *                     a heap buffer
      */
@@ -165,6 +175,7 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
             return emptyBuf;
         }
         validate(initialCapacity, maxCapacity);
+        // 子类具体实现
         return newHeapBuffer(initialCapacity, maxCapacity);
     }
 
@@ -184,6 +195,7 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
             return emptyBuf;
         }
         validate(initialCapacity, maxCapacity);
+        // 子类具体实现
         return newDirectBuffer(initialCapacity, maxCapacity);
     }
 
@@ -260,19 +272,22 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
         if (minNewCapacity == threshold) {
             return threshold;
         }
-        // 如果超过4MiB page, 不进行 double调整，更具阈值进行调整
+        // 超过 threshold ，增加 threshold ，不超过 maxCapacity 大小。
         // If over threshold, do not double but just increase by threshold.
         if (minNewCapacity > threshold) {
             int newCapacity = minNewCapacity / threshold * threshold;
+            // 不够在继续增加一个阈值了，直接使用最大的容量
             if (newCapacity > maxCapacity - threshold) {
                 newCapacity = maxCapacity;
             } else {
+                // 当前基础上增加一个阈值
                 newCapacity += threshold;
             }
             return newCapacity;
         }
 
         // Not over threshold. Double up to 4 MiB, starting from 64.
+        // 未超过 threshold ，从 64 开始两倍计算，不超过 4M 大小。
         int newCapacity = 64;
         while (newCapacity < minNewCapacity) {
             newCapacity <<= 1;

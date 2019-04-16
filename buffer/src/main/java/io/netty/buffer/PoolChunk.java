@@ -109,43 +109,99 @@ import java.util.Deque;
 final class PoolChunk<T> implements PoolChunkMetric {
 
     private static final int INTEGER_SIZE_MINUS_ONE = Integer.SIZE - 1;
-
+    /**
+     * 所属的 PoolArena 对象
+     */
     final PoolArena<T> arena;
+    /**
+     * 内存空间，有 ByteBuffer，byte[]
+     */
     final T memory;
+    /**
+     * 是否非池化
+     */
     final boolean unpooled;
+    /**
+     *
+     */
     final int offset;
+    /**
+     * 分配信息二叉树
+     */
     private final byte[] memoryMap;
+    /**
+     * 深度信息二叉树
+     */
     private final byte[] depthMap;
+    /**
+     * SubPage 数组
+     */
     private final PoolSubpage<T>[] subpages;
-    /** Used to determine if the requested capacity is equal to or greater than pageSize. */
+    /**
+     * Used to determine if the requested capacity is equal to or greater than pageSize.
+     * 请求的容量是否已经超过了Page的大小, 是否需要分配 SubPage
+     */
     private final int subpageOverflowMask;
+    /**
+     * pageSize的大小, 默认 8K
+     */
     private final int pageSize;
+    /**
+     * 从 1 开始左移到 PageSize 的个数，最大 1 << 13 = 8192
+     */
     private final int pageShifts;
+    /**
+     * 满二叉树的高度，默认 11
+     */
     private final int maxOrder;
+    /**
+     * chunk 的大小，默认 16M
+     */
     private final int chunkSize;
+    /**
+     * log2 chunkSize 的值，log2 (16M) = 24
+     */
     private final int log2ChunkSize;
+    /**
+     * 最大可以分配SubPage的数量，1 << maxOrder = 2048
+     */
     private final int maxSubpageAllocs;
-    /** Used to mark memory as unusable */
+    /**
+     * Used to mark memory as unusable
+     * 标记节点不可用 maxOrder + 1
+     */
     private final byte unusable;
 
     // Use as cache for ByteBuffer created from the memory. These are just duplicates and so are only a container
     // around the memory itself. These are often needed for operations within the Pooled*ByteBuf and so
     // may produce extra GC, which can be greatly reduced by caching the duplicates.
-    //
+    // 从内存中创建的 ByteBuffer 的缓存，降低GC
     // This may be null if the PoolChunk is unpooled as pooling the ByteBuffer instances does not make any sense here.
     private final Deque<ByteBuffer> cachedNioBuffers;
 
+    /**
+     * 剩余的字节数
+     */
     private int freeBytes;
 
+    /**
+     * 父节点
+     */
     PoolChunkList<T> parent;
+    /**
+     * 上一个 PoolChunk 节点
+     */
     PoolChunk<T> prev;
+    /**
+     * 下一个 PoolChunk 节点
+     */
     PoolChunk<T> next;
 
     // TODO: Test if adding padding helps under contention
     //private long pad0, pad1, pad2, pad3, pad4, pad5, pad6, pad7;
 
     PoolChunk(PoolArena<T> arena, T memory, int pageSize, int maxOrder, int pageShifts, int chunkSize, int offset) {
-        unpooled = false; // false
+        unpooled = false; // false 池化
         this.arena = arena;
         this.memory = memory;
         this.pageSize = pageSize; // 8192
@@ -161,27 +217,30 @@ final class PoolChunk<T> implements PoolChunkMetric {
         assert maxOrder < 30 : "maxOrder should be < 30, but is: " + maxOrder;
         maxSubpageAllocs = 1 << maxOrder; // 2048
 
-        // Generate the memory map. 存放了每一个元素在平衡二叉树中对应的深度
-        memoryMap = new byte[maxSubpageAllocs << 1];
+        // Generate the memory map. 初始化内存数组
+        memoryMap = new byte[maxSubpageAllocs << 1]; // 4096
         depthMap = new byte[memoryMap.length]; // 4096个对象
-        int memoryMapIndex = 1;
-        for (int d = 0; d <= maxOrder; ++ d) { // move down the tree one level at a time 12层
-            int depth = 1 << d;
+        int memoryMapIndex = 1; // 忽略0，从1开始
+        for (int d = 0; d <= maxOrder; ++ d) { // move down the tree one level at a time 每次往下移动一层
+            int depth = 1 << d; // 每次循环的深度(每一层的数组的个数)
             for (int p = 0; p < depth; ++ p) {
-                // in each level traverse left to right and set value to the depth of subtree
+                // in each level traverse left to right and set value to the depth of subtree 从左到右赋值，赋值为每一层的深度
                 memoryMap[memoryMapIndex] = (byte) d;
                 depthMap[memoryMapIndex] = (byte) d;
                 memoryMapIndex ++;
             }
         }
-
+        // 创建 SubPage 数组
         subpages = newSubpageArray(maxSubpageAllocs);
         cachedNioBuffers = new ArrayDeque<ByteBuffer>(8);
     }
 
-    /** Creates a special chunk that is not pooled. */
+    /**
+     * Creates a special chunk that is not pooled.
+     * 创建一个特殊的 chunk 不适用池子
+     */
     PoolChunk(PoolArena<T> arena, T memory, int size, int offset) {
-        unpooled = true;
+        unpooled = true; // 非池化
         this.arena = arena;
         this.memory = memory;
         this.offset = offset;
@@ -226,7 +285,9 @@ final class PoolChunk<T> implements PoolChunkMetric {
     }
 
     boolean allocate(PooledByteBuf<T> buf, int reqCapacity, int normCapacity) {
+        // memoryMap 的索引
         final long handle;
+        // 大于 pageSize，123 & -124 = 0，
         if ((normCapacity & subpageOverflowMask) != 0) { // >= pageSize
             handle =  allocateRun(normCapacity);
         } else {
@@ -250,11 +311,17 @@ final class PoolChunk<T> implements PoolChunkMetric {
      * @param id id
      */
     private void updateParentsAlloc(int id) {
+        // 一直递归到第一层
         while (id > 1) {
+            // 获取父节点的索引
             int parentId = id >>> 1;
+            // 获取左节点
             byte val1 = value(id);
+            // 获取右节点
             byte val2 = value(id ^ 1);
+            // 获取比较小的节点的值
             byte val = val1 < val2 ? val1 : val2;
+            // 将父节点的值设置为比较的结果
             setValue(parentId, val);
             id = parentId;
         }
@@ -268,16 +335,22 @@ final class PoolChunk<T> implements PoolChunkMetric {
      * @param id id
      */
     private void updateParentsFree(int id) {
+        // 获得当前节点的子节点的层级
         int logChild = depth(id) + 1;
         while (id > 1) {
+            // 获取父节点
             int parentId = id >>> 1;
+            // 获取当前节点的值
             byte val1 = value(id);
+            // 获取兄弟节点的值
             byte val2 = value(id ^ 1);
+            // 获取当前节点的层级
             logChild -= 1; // in first iteration equals log, subsequently reduce 1 from logChild as we traverse up
-
+            // 两个节点都可用，恢复父节点的值 = 父节点所在的层级
             if (val1 == logChild && val2 == logChild) {
                 setValue(parentId, (byte) (logChild - 1));
             } else {
+                // 否则设置父节点的值为较小的值
                 byte val = val1 < val2 ? val1 : val2;
                 setValue(parentId, val);
             }
@@ -289,29 +362,40 @@ final class PoolChunk<T> implements PoolChunkMetric {
     /**
      * Algorithm to allocate an index in memoryMap when we query for a free node
      * at depth d
-     *
+     * we want to find the first node (from left) at height h that can be allocated 判断每一层最左侧的节点是否可以被分配
      * @param d depth
      * @return index in memoryMap
+     *
+     * e.g. d = 2
      */
     private int allocateNode(int d) {
-        int id = 1;
-        int initial = - (1 << d); // has last d bits = 0 and rest all = 1
-        byte val = value(id);
+        int id = 1; // 索引
+        int initial = - (1 << d); // has last d bits = 0 and rest all = 1 -4
+        // 如果根节点的值，大于 d ，说明，第 d 层没有符合的节点，也就是说 [0, d-1] 层也没有符合的节点。即，当前 Chunk 没有符合的节点。
+        byte val = value(id); // 从 0 开始
         if (val > d) { // unusable
             return -1;
         }
         while (val < d || (id & initial) == 0) { // id & initial == 1 << d for all ids at depth d, for < d it is 0
+            // 下移一层节点
             id <<= 1;
+            // 获取这一层最左侧的节点的值，每一层节点的值 = 深度，如果 != 深度，则已经被使用了
             val = value(id);
+            // 如果值大于 d ，说明，以左节点作为根节点形成虚拟的虚拟满二叉树，没有符合的节点。
             if (val > d) {
+                // 获得右节点的编号 +1 获取下一个下标的节点
                 id ^= 1;
+                // 获取右节点的值
                 val = value(id);
             }
         }
+        // 找到可用的内存的索引
         byte value = value(id);
         assert value == d && (id & initial) == 1 << d : String.format("val = %d, id & initial = %d, d = %d",
                 value, id & initial, d);
+        // 更新节点状态，设置为不可用
         setValue(id, unusable); // mark as unusable
+        // 更新获得的节点的祖先都不可用
         updateParentsAlloc(id);
         return id;
     }
@@ -323,11 +407,14 @@ final class PoolChunk<T> implements PoolChunkMetric {
      * @return index in memoryMap
      */
     private long allocateRun(int normCapacity) {
+        // 获取当前分配容量需要的深度 刚开始 pageShifts 为 13
         int d = maxOrder - (log2(normCapacity) - pageShifts);
+        // 获取节点的索引
         int id = allocateNode(d);
         if (id < 0) {
             return id;
         }
+        // 减少剩余可用字节数
         freeBytes -= runLength(id);
         return id;
     }
@@ -376,10 +463,13 @@ final class PoolChunk<T> implements PoolChunkMetric {
      * @param handle handle to free
      */
     void free(long handle, ByteBuffer nioBuffer) {
+        // 获取在 memoryMap 的索引
         int memoryMapIdx = memoryMapIdx(handle);
+        // 获取位图中的索引
         int bitmapIdx = bitmapIdx(handle);
 
         if (bitmapIdx != 0) { // free a subpage
+            // 在数组中找到 SubPage 对象
             PoolSubpage<T> subpage = subpages[subpageIdx(memoryMapIdx)];
             assert subpage != null && subpage.doNotDestroy;
 
@@ -392,8 +482,10 @@ final class PoolChunk<T> implements PoolChunkMetric {
                 }
             }
         }
+        // 添加剩余字节数
         freeBytes += runLength(memoryMapIdx);
         setValue(memoryMapIdx, depth(memoryMapIdx));
+        // 释放父节点
         updateParentsFree(memoryMapIdx);
 
         if (nioBuffer != null && cachedNioBuffers != null &&
@@ -402,9 +494,21 @@ final class PoolChunk<T> implements PoolChunkMetric {
         }
     }
 
+    /**
+     * 初始化 buf
+     *
+     * @param buf         PooledByteBuf
+     * @param nioBuffer   nio ByteBuffer
+     * @param handle      内存索引
+     * @param reqCapacity 需要的容量
+     */
     void initBuf(PooledByteBuf<T> buf, ByteBuffer nioBuffer, long handle, int reqCapacity) {
+        // 获取数组的索引
         int memoryMapIdx = memoryMapIdx(handle);
+        // 获得 bitmap 数组的编号( 下标 )。注意，此时获得的还不是真正的 bitmapIdx 值，需要经过 `bitmapIdx & 0x3FFFFFFF` 运算。
+        // 位图，page分配的返回的位图都是0, subPage返回的非0
         int bitmapIdx = bitmapIdx(handle);
+        // page
         if (bitmapIdx == 0) {
             byte val = value(memoryMapIdx);
             assert val == unusable : String.valueOf(val);

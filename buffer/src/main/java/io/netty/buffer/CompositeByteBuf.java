@@ -60,6 +60,7 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
     private boolean freed;
 
     private CompositeByteBuf(ByteBufAllocator alloc, boolean direct, int maxNumComponents, int initSize) {
+        // 设置 ByteBuf 的最大容量
         super(AbstractByteBufAllocator.DEFAULT_MAX_CAPACITY);
         if (alloc == null) {
             throw new NullPointerException("alloc");
@@ -71,6 +72,7 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
         this.alloc = alloc;
         this.direct = direct;
         this.maxNumComponents = maxNumComponents;
+        // 创建一个容器
         components = newCompArray(initSize, maxNumComponents);
     }
 

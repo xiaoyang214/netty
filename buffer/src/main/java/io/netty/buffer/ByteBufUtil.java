@@ -67,7 +67,7 @@ public final class ByteBufUtil {
     private static final int MAX_BYTES_PER_CHAR_UTF8 =
             (int) CharsetUtil.encoder(CharsetUtil.UTF_8).maxBytesPerChar();
 
-    static final int WRITE_CHUNK_SIZE = 8192;
+    static final int WRITE_CHUNK_SIZE = 8192; // 8k
     static final ByteBufAllocator DEFAULT_ALLOCATOR;
 
     static {
