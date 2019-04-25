@@ -20,39 +20,47 @@ package io.netty.util.concurrent;
  * with some handy methods to see if a {@link Thread} is executed in a event loop.
  * Besides this, it also extends the {@link EventExecutorGroup} to allow for a generic
  * way to access methods.
+ * <p></p>
+ * 是一个特殊的 EventExecutorGroup ，带有一些方便的方法来查看 Thread 是否在 event loop 中执行
  *
  */
 public interface EventExecutor extends EventExecutorGroup {
 
     /**
      * Returns a reference to itself.
+     * 返回自己的引用
      */
     @Override
     EventExecutor next();
 
     /**
      * Return the {@link EventExecutorGroup} which is the parent of this {@link EventExecutor},
+     * 返回自己的父类 EventExecutorGroup
      */
     EventExecutorGroup parent();
 
     /**
      * Calls {@link #inEventLoop(Thread)} with {@link Thread#currentThread()} as argument
+     * 当前线程进行判断，是否是 EventLoop 线程
      */
     boolean inEventLoop();
 
     /**
      * Return {@code true} if the given {@link Thread} is executed in the event loop,
      * {@code false} otherwise.
+     * 判断指定线程是否是 EventLoop 线程
      */
     boolean inEventLoop(Thread thread);
 
     /**
      * Return a new {@link Promise}.
+     * 创建一个 Promise 对象
      */
     <V> Promise<V> newPromise();
 
     /**
      * Create a new {@link ProgressivePromise}.
+     * 创建一个 ProgressivePromise 对象
      */
     <V> ProgressivePromise<V> newProgressivePromise();
 

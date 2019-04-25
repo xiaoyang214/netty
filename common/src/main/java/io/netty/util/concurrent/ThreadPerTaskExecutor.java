@@ -30,6 +30,7 @@ public final class ThreadPerTaskExecutor implements Executor {
 
     @Override
     public void execute(Runnable command) {
+        // netty 自己实现了线程工厂，创建指定名称的线程对象
         threadFactory.newThread(command).start();
     }
 }

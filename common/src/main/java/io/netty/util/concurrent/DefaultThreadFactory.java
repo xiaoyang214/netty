@@ -63,11 +63,16 @@ public class DefaultThreadFactory implements ThreadFactory {
         this(toPoolName(poolType), daemon, priority);
     }
 
+    /**
+     * 获取线程池名称
+     * @param poolType
+     * @return
+     */
     public static String toPoolName(Class<?> poolType) {
         if (poolType == null) {
             throw new NullPointerException("poolType");
         }
-
+        // className MultithreadEventExecutorGroup的实现类类名，一般为 nioEventLoopGroup
         String poolName = StringUtil.simpleClassName(poolType);
         switch (poolName.length()) {
             case 0:
@@ -75,6 +80,7 @@ public class DefaultThreadFactory implements ThreadFactory {
             case 1:
                 return poolName.toLowerCase(Locale.US);
             default:
+                // 首字母大写，第二个小写，则把首字母小写，否则直接返回名称
                 if (Character.isUpperCase(poolName.charAt(0)) && Character.isLowerCase(poolName.charAt(1))) {
                     return Character.toLowerCase(poolName.charAt(0)) + poolName.substring(1);
                 } else {
@@ -87,11 +93,12 @@ public class DefaultThreadFactory implements ThreadFactory {
         if (poolName == null) {
             throw new NullPointerException("poolName");
         }
+        // 判断线程优先级取值范围
         if (priority < Thread.MIN_PRIORITY || priority > Thread.MAX_PRIORITY) {
             throw new IllegalArgumentException(
                     "priority: " + priority + " (expected: Thread.MIN_PRIORITY <= priority <= Thread.MAX_PRIORITY)");
         }
-
+        // 线程前缀 nioEventLoopGroup-自增id-
         prefix = poolName + '-' + poolId.incrementAndGet() + '-';
         this.daemon = daemon;
         this.priority = priority;
@@ -105,8 +112,10 @@ public class DefaultThreadFactory implements ThreadFactory {
 
     @Override
     public Thread newThread(Runnable r) {
+        // 创建线程 名称 = nioEventLoopGroup-自增id-自增id
         Thread t = newThread(FastThreadLocalRunnable.wrap(r), prefix + nextId.incrementAndGet());
         try {
+            // 设置守护线程，设置线程优先级
             if (t.isDaemon() != daemon) {
                 t.setDaemon(daemon);
             }

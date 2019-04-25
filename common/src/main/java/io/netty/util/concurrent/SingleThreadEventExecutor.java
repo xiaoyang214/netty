@@ -45,20 +45,22 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 /**
  * Abstract base class for {@link OrderedEventExecutor}'s that execute all its submitted tasks in a single thread.
  *
+ * 基于 {@link OrderedEventExecutor} 的抽象实现，执行所有的任务都是单线程执行
+ *
  */
 public abstract class SingleThreadEventExecutor extends AbstractScheduledEventExecutor implements OrderedEventExecutor {
-
+    // 默认最大线程池阻塞个数
     static final int DEFAULT_MAX_PENDING_EXECUTOR_TASKS = Math.max(16,
             SystemPropertyUtil.getInt("io.netty.eventexecutor.maxPendingTasks", Integer.MAX_VALUE));
 
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(SingleThreadEventExecutor.class);
-
-    private static final int ST_NOT_STARTED = 1;
-    private static final int ST_STARTED = 2;
-    private static final int ST_SHUTTING_DOWN = 3;
-    private static final int ST_SHUTDOWN = 4;
-    private static final int ST_TERMINATED = 5;
+    // 状态描述
+    private static final int ST_NOT_STARTED = 1; // 未开始
+    private static final int ST_STARTED = 2; // 已经开始
+    private static final int ST_SHUTTING_DOWN = 3; // 正在关闭
+    private static final int ST_SHUTDOWN = 4; // 已经关闭
+    private static final int ST_TERMINATED = 5; // 已经终止
 
     private static final Runnable WAKEUP_TASK = new Runnable() {
         @Override
@@ -72,23 +74,27 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             // Do nothing.
         }
     };
-
+    // 原子字段更新，netty 中大量使用该类做原子操作，更新当前线程执行状态
     private static final AtomicIntegerFieldUpdater<SingleThreadEventExecutor> STATE_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(SingleThreadEventExecutor.class, "state");
+    // 更新线程属性
     private static final AtomicReferenceFieldUpdater<SingleThreadEventExecutor, ThreadProperties> PROPERTIES_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(
                     SingleThreadEventExecutor.class, ThreadProperties.class, "threadProperties");
-
+    // 任务队列
     private final Queue<Runnable> taskQueue;
-
+    // 线程
     private volatile Thread thread;
     @SuppressWarnings("unused")
     private volatile ThreadProperties threadProperties;
+    // 线程执行器
     private final Executor executor;
+    // 是否被中断
     private volatile boolean interrupted;
 
     private final Semaphore threadLock = new Semaphore(0);
     private final Set<Runnable> shutdownHooks = new LinkedHashSet<Runnable>();
+    // 添加任务后，任务是否会自动导致线程唤醒
     private final boolean addTaskWakesUp;
     private final int maxPendingTasks;
     private final RejectedExecutionHandler rejectedExecutionHandler;
@@ -751,12 +757,16 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         if (task == null) {
             throw new NullPointerException("task");
         }
-
+        // 判断是否是 EventLoop 线程
         boolean inEventLoop = inEventLoop();
-        addTask(task);
+        addTask(task); // 添加到任务队列
+        // 如果不是 EventLoop 线程
         if (!inEventLoop) {
+            // 创建启动线程
             startThread();
+            // 如果已经关闭
             if (isShutdown()) {
+                // 从队列中移除
                 boolean reject = false;
                 try {
                     if (removeTask(task)) {
@@ -767,12 +777,13 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                     // hope we will be able to pick-up the task before its completely terminated.
                     // In worst case we will log on termination.
                 }
+                // 移除之后执行拒绝策略
                 if (reject) {
                     reject();
                 }
             }
         }
-
+        // 唤醒线程，如果任务没有设置自动唤醒，并且需要唤醒，就执行唤醒操作
         if (!addTaskWakesUp && wakesUpForTask(task)) {
             wakeup(inEventLoop);
         }
@@ -859,11 +870,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final long SCHEDULE_PURGE_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
     private void startThread() {
+        // 必须是未开始的
         if (state == ST_NOT_STARTED) {
+            // 原子操作，从未开始设置为开始状态
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
                 try {
                     doStartThread();
                 } catch (Throwable cause) {
+                    // 原子操作，设置为未开始
                     STATE_UPDATER.set(this, ST_NOT_STARTED);
                     PlatformDependent.throwException(cause);
                 }
@@ -894,6 +908,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         executor.execute(new Runnable() {
             @Override
             public void run() {
+                // 获取当前线程
                 thread = Thread.currentThread();
                 if (interrupted) {
                     thread.interrupt();
@@ -902,6 +917,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    // 执行 run 方法
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {

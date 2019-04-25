@@ -53,6 +53,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
 
     // TODO: Test if adding padding helps under contention
     //private long pad0, pad1, pad2, pad3, pad4, pad5, pad6, pad7;
+    // 维护了最小可用和最大可用，使得不同的 PoolChunk 在正确的位置
 
     PoolChunkList(PoolArena<T> arena, PoolChunkList<T> nextList, int minUsage, int maxUsage, int chunkSize) {
         assert minUsage <= maxUsage;
@@ -104,6 +105,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
         for (PoolChunk<T> cur = head; cur != null; cur = cur.next) {
             if (cur.allocate(buf, reqCapacity, normCapacity)) {
                 if (cur.usage() >= maxUsage) {
+                    // 如果超过了最大使用量，从当前的 PoolChunkList 中移除，添加到下一个 list 中，把需要内存交到的放到后面的 PoolChunkList 中
                     remove(cur);
                     nextList.add(cur);
                 }
@@ -116,6 +118,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
     boolean free(PoolChunk<T> chunk, long handle, ByteBuffer nioBuffer) {
         chunk.free(handle, nioBuffer);
         if (chunk.usage() < minUsage) {
+            // 如果可用量小于最小可用量，从当前节点中移除，移动到上一个节点中
             remove(chunk);
             // Move the PoolChunk down the PoolChunkList linked-list.
             return move0(chunk);
@@ -130,7 +133,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
             // Move the PoolChunk down the PoolChunkList linked-list.
             return move0(chunk);
         }
-
+        // 确认应该放到当前的 PoolChunkList 中
         // PoolChunk fits into this PoolChunkList, adding it here.
         add0(chunk);
         return true;
@@ -150,7 +153,12 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
         return prevList.move(chunk);
     }
 
+    /**
+     * 将 PoolChunk 添加到当前的 PoolChunkList 中
+     * @param chunk
+     */
     void add(PoolChunk<T> chunk) {
+        // 超过最大可用，添加到下一个 PoolChunkList 中
         if (chunk.usage() >= maxUsage) {
             nextList.add(chunk);
             return;
@@ -163,6 +171,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
      */
     void add0(PoolChunk<T> chunk) {
         chunk.parent = this;
+        // head 指的是当前 ChunkList 的head，添加到当前 ChunkList 的头部
         if (head == null) {
             head = chunk;
             chunk.prev = null;

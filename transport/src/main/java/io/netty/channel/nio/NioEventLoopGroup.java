@@ -32,6 +32,7 @@ import java.util.concurrent.ThreadFactory;
 
 /**
  * {@link MultithreadEventLoopGroup} implementations which is used for NIO {@link Selector} based {@link Channel}s.
+ * 用于基于 Nio Selector 的 Channel 的实现
  */
 public class NioEventLoopGroup extends MultithreadEventLoopGroup {
 
@@ -114,6 +115,8 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
     /**
      * Replaces the current {@link Selector}s of the child event loops with newly created {@link Selector}s to work
      * around the  infamous epoll 100% CPU bug.
+     *
+     * 创建一个新的 Selector 来替换当前的 Selector 上面的事件，用来解决 epoll 100% cpu 占用的 bug
      */
     public void rebuildSelectors() {
         for (EventExecutor e: this) {

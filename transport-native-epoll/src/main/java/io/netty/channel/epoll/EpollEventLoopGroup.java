@@ -31,6 +31,8 @@ import java.util.concurrent.ThreadFactory;
 /**
  * {@link EventLoopGroup} which uses epoll under the covers. Because of this
  * it only works on linux.
+ *
+ * 只能工作在 Linux 环境下的 EventLoopGroup
  */
 public final class EpollEventLoopGroup extends MultithreadEventLoopGroup {
     {

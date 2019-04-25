@@ -21,6 +21,8 @@ import java.util.concurrent.ThreadFactory;
 /**
  * Default implementation of {@link MultithreadEventExecutorGroup} which will use {@link DefaultEventExecutor} instances
  * to handle the tasks.
+ *
+ * {@link MultithreadEventExecutorGroup} 的默认实现，利用 {@link DefaultEventExecutor} 处理事件
  */
 public class DefaultEventExecutorGroup extends MultithreadEventExecutorGroup {
     /**
@@ -44,10 +46,11 @@ public class DefaultEventExecutorGroup extends MultithreadEventExecutorGroup {
     /**
      * Create a new instance.
      *
-     * @param nThreads          the number of threads that will be used by this instance.
-     * @param threadFactory     the ThreadFactory to use, or {@code null} if the default should be used.
+     * @param nThreads          the number of threads that will be used by this instance. 实例的线程数
+     * @param threadFactory     the ThreadFactory to use, or {@code null} if the default should be used. 线程工厂
      * @param maxPendingTasks   the maximum number of pending tasks before new tasks will be rejected.
-     * @param rejectedHandler   the {@link RejectedExecutionHandler} to use.
+     *                          如果不设置，默认 {@link Integer#MAX_VALUE}
+     * @param rejectedHandler   the {@link RejectedExecutionHandler} to use. 拒绝策略
      */
     public DefaultEventExecutorGroup(int nThreads, ThreadFactory threadFactory, int maxPendingTasks,
                                      RejectedExecutionHandler rejectedHandler) {
