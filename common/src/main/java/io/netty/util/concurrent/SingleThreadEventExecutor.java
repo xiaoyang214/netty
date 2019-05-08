@@ -394,25 +394,33 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     /**
      * Poll all tasks from the task queue and run them via {@link Runnable#run()} method.  This method stops running
      * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
+     * 从队列中获取所有任务并调用{@link Runnable#run()}方法执行
+     * 队列中所有的任务都执行结束或者超过 timeout 时间，任务停止
      */
     protected boolean runAllTasks(long timeoutNanos) {
+        // 从 ScheduledTaskQueue 中拉去任务，放到 taskQueue 中
         fetchFromScheduledTaskQueue();
+        // 弹出一个任务
         Runnable task = pollTask();
+        // 如果没有任务
         if (task == null) {
+            // 执行任务结束后动作
             afterRunningAllTasks();
             return false;
         }
-
+        // 获取任务截止时间
         final long deadline = ScheduledFutureTask.nanoTime() + timeoutNanos;
         long runTasks = 0;
         long lastExecutionTime;
         for (;;) {
+            // 调用 Runnable run 方法执行
             safeExecute(task);
-
+            // 任务数++
             runTasks ++;
 
             // Check timeout every 64 tasks because nanoTime() is relatively expensive.
             // XXX: Hard-coded value - will make it configurable if it is really a problem.
+            // 每 64 个任务执行后,判断一次超时时间,nanoTime() 相对比较昂贵
             if ((runTasks & 0x3F) == 0) {
                 lastExecutionTime = ScheduledFutureTask.nanoTime();
                 if (lastExecutionTime >= deadline) {

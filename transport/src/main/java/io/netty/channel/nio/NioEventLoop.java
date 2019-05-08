@@ -156,7 +156,13 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private static final class SelectorTuple {
+        /**
+         * 没有包装的 Selector
+         */
         final Selector unwrappedSelector;
+        /**
+         * 包装过后的 Selector
+         */
         final Selector selector;
 
         SelectorTuple(Selector unwrappedSelector) {
@@ -492,6 +498,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                             // (OK - no wake-up required).
                             // 当 wakeUp 为 true 时，唤醒 Selector
                             /**
+                             * select的时候，会把 wakeup 从 false -> true
                              * 1）在 wakenUp.getAndSet(false) 和 #select(boolean oldWakeUp) 之间，在标识 wakeUp 设置为 false 时，在 #select
                              * (boolean oldWakeUp) 方法中，正在调用 Selector#select(...) 方法，处于阻塞中。
                              * 2）此时，有另外的线程调用了 #wakeup() 方法，会将标记 wakeUp 设置为 true ，并唤醒 Selector#select(...) 方法的阻塞等待。
@@ -515,6 +522,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
                 final int ioRatio = this.ioRatio;
+                // 如果io利用率 = 100% 区分，确保每次都能执行所有任务
                 if (ioRatio == 100) {
                     try {
                         processSelectedKeys();
@@ -563,6 +571,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private void processSelectedKeys() {
         if (selectedKeys != null) {
+            // 优化处理的SelectedKey
             processSelectedKeysOptimized();
         } else {
             processSelectedKeysPlain(selector.selectedKeys());
@@ -693,6 +702,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // We first need to call finishConnect() before try to trigger a read(...) or write(...) as otherwise
             // the NIO JDK channel implementation may throw a NotYetConnectedException.
             if ((readyOps & SelectionKey.OP_CONNECT) != 0) {
+                // 移除对 OP_CONNECT 感兴趣
                 // remove OP_CONNECT as otherwise Selector.select(..) will always return without blocking
                 // See https://github.com/netty/netty/issues/924
                 int ops = k.interestOps();
@@ -701,16 +711,19 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
                 unsafe.finishConnect();
             }
-
+            // 先执行写的操作，释放内存
             // Process OP_WRITE first as we may be able to write some queued buffers and so free memory.
+            // xiaoyang 2019/5/8: 向客户端写数据
             if ((readyOps & SelectionKey.OP_WRITE) != 0) {
                 // Call forceFlush which will also take care of clear the OP_WRITE once there is nothing left to write
+                // 调用 forceFlush，当没有东西可写的时候，清理 OP_WRITE 感兴趣
                 ch.unsafe().forceFlush();
             }
 
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
             // to a spin loop
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
+                // xiaoyang 2019/5/8: 处理客户端的读请求
                 unsafe.read();
             }
         } catch (CancelledKeyException ignored) {
@@ -795,13 +808,17 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void select(boolean oldWakenUp) throws IOException {
+        // 获取 selector 对象
         Selector selector = this.selector;
         try {
             int selectCnt = 0;
+            // 获取当前时间 ns
             long currentTimeNanos = System.nanoTime();
+            // 计算终止时间
             long selectDeadLineNanos = currentTimeNanos + delayNanos(currentTimeNanos);
 
             for (;;) {
+                // + 5000000L 是为了四舍五入，然后转成 ms
                 long timeoutMillis = (selectDeadLineNanos - currentTimeNanos + 500000L) / 1000000L;
                 if (timeoutMillis <= 0) {
                     if (selectCnt == 0) {
@@ -815,7 +832,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 // Selector#wakeup. So we need to check task queue again before executing select operation.
                 // If we don't, the task might be pended until select operation was timed out.
                 // It might be pended until idle timeout if IdleStateHandler existed in pipeline.
+                // 一个任务在 wakenUp 是 true 的时候提交，这个 task 没有机会调用 wakeup 方法。我们需要再次检查队列在执行 select 操作的时候，
+                // 如果不检查，任务有可能阻塞直到 select 操作超时。如果 pipeline 中存在 IdleStateHandler, 将阻塞直到 idle 超时
                 if (hasTasks() && wakenUp.compareAndSet(false, true)) {
+                    // selectNow 非阻塞
                     selector.selectNow();
                     selectCnt = 1;
                     break;
@@ -823,7 +843,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
                 int selectedKeys = selector.select(timeoutMillis);
                 selectCnt ++;
-
+                // 如果有以下任务之一，停止循环
                 if (selectedKeys != 0 || oldWakenUp || wakenUp.get() || hasTasks() || hasScheduledTasks()) {
                     // - Selected something,
                     // - waken up by user, or
@@ -831,6 +851,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     // - a scheduled task is ready for processing
                     break;
                 }
+                // 如果线程被打断
                 if (Thread.interrupted()) {
                     // Thread was interrupted so reset selected keys and break so we not run into a busy loop.
                     // As this is most likely a bug in the handler of the user or it's client library we will
@@ -847,6 +868,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 }
 
                 long time = System.nanoTime();
+                // 当前时间 - 超时时间 >= 开始时间，正常，如果 < 开始时间，select 没有阻塞成功，触发jdk空轮训bug，
+                // 如果超过select阈值，重新构建selector
                 if (time - TimeUnit.MILLISECONDS.toNanos(timeoutMillis) >= currentTimeNanos) {
                     // timeoutMillis elapsed without anything selected.
                     selectCnt = 1;
